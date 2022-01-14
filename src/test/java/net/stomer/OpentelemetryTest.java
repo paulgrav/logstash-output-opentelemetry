@@ -1,11 +1,10 @@
-package org.logstashplugins;
+package net.stomer;
 
 import co.elastic.logstash.api.Configuration;
 import co.elastic.logstash.api.Event;
 import org.junit.Assert;
 import org.junit.Test;
 import org.logstash.plugins.ConfigurationImpl;
-import org.logstashplugins.JavaOutputExample;
 
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
@@ -13,16 +12,18 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
-public class JavaOutputExampleTest {
+public class OpentelemetryTest {
 
     @Test
     public void testJavaOutputExample() {
-        String prefix = "Prefix";
+        String endpoint = "http://localhost:4317";
+        String exporterType = "grpc";
         Map<String, Object> configValues = new HashMap<>();
-        configValues.put(JavaOutputExample.PREFIX_CONFIG.name(), prefix);
+        configValues.put(Opentelemetry.ENDPOINT_CONFIG.name(), endpoint);
+//        configValues.put(JavaOutputExample.EXPORTER_TYPE_CONFIG.name(), exporterType);
         Configuration config = new ConfigurationImpl(configValues);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        JavaOutputExample output = new JavaOutputExample("test-id", config, null, baos);
+        Opentelemetry output = new Opentelemetry("test-id", config, null, baos);
 
         String sourceField = "message";
         int eventCount = 5;
@@ -39,7 +40,7 @@ public class JavaOutputExampleTest {
         int index = 0;
         int lastIndex = 0;
         while (index < eventCount) {
-            lastIndex = outputString.indexOf(prefix, lastIndex);
+            lastIndex = outputString.indexOf(endpoint, lastIndex);
             Assert.assertTrue("Prefix should exist in output string", lastIndex > -1);
             lastIndex = outputString.indexOf("message " + index);
             Assert.assertTrue("Message should exist in output string", lastIndex > -1);

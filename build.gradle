@@ -7,17 +7,17 @@ apply from: LOGSTASH_CORE_PATH + "/../rubyUtils.gradle"
 // ===========================================================================
 // plugin info
 // ===========================================================================
-group                      'org.logstashplugins' // must match the package of the main plugin class
+group                      'net.stomer' // must match the package of the main plugin class
 version                    "${file("VERSION").text.trim()}" // read from required VERSION file
-description                = "Example Java output implementation"
+description                = "OpenTelemetry Output Plugin"
 pluginInfo.licenses        = ['Apache-2.0'] // list of SPDX license IDs
 pluginInfo.longDescription = "This gem is a Logstash plugin required to be installed on top of the Logstash core pipeline using \$LS_HOME/bin/logstash-plugin install gemname. This gem is not a stand-alone program"
-pluginInfo.authors         = ['Elasticsearch']
-pluginInfo.email           = ['info@elastic.co']
-pluginInfo.homepage        = "http://www.elastic.co/guide/en/logstash/current/index.html"
+pluginInfo.authors         = ['Paul Grave']
+pluginInfo.email           = ['paul@stomer.net']
+pluginInfo.homepage        = "http://paulgrav.micro.blog"
 pluginInfo.pluginType      = "output"
-pluginInfo.pluginClass     = "JavaOutputExample"
-pluginInfo.pluginName      = "java_output_example" // must match the @LogstashPlugin annotation in the main plugin class
+pluginInfo.pluginClass     = "Opentelemetry"
+pluginInfo.pluginName      = "opentelemetry" // must match the @LogstashPlugin annotation in the main plugin class
 // ===========================================================================
 
 sourceCompatibility = 1.8
@@ -49,9 +49,8 @@ dependencies {
     implementation 'io.opentelemetry:opentelemetry-sdk-logs:1.10.0-alpha'
     implementation 'io.opentelemetry:opentelemetry-exporter-logging:1.10.0'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp-logs:1.10.0-alpha'
-    implementation fileTree(dir: LOGSTASH_CORE_PATH, include: "**/logstash-core-?.?.?.jar")
-    implementation(files("/Users/gravepa/Sites/logstash-core/logstash-core/build/libs/logstash-core-7.10.3.jar"))
-    implementation group: 'org.jruby', name: 'jruby-core', version: '9.1.13.0'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp-http-logs:1.10.0-alpha'
+    implementation(fileTree(dir: LOGSTASH_CORE_PATH, include: "**/logstash-core-?.?.?.jar"))
     testImplementation 'junit:junit:4.12'
     testImplementation 'org.jruby:jruby-complete:9.1.13.0'
     testImplementation 'org.apache.logging.log4j:log4j-core:2.9.1'
