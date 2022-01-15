@@ -3,7 +3,7 @@ name: Publish Gems
 on:
   push:
     tags:
-      - 'v*'
+      - '*'
 
 env:
   ARTIFACT_NAME: logstash-output-opentelemetry.gem
