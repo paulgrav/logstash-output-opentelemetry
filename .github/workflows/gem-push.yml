@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    uses: paulgrav/logstash-output/.github/workflows/gradle.yml
+    uses: paulgrav/logstash-output/.github/workflows/gradle.yml@main
   publish:
     name: Build + Publish
     runs-on: ubuntu-latest
