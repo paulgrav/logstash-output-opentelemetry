@@ -24,7 +24,7 @@ jobs:
       with:
         ruby-version: 2.6.x
     - env:
-      EVENT_CONTEXT: ${{ toJSON(github.event) }}
+        EVENT_CONTEXT: ${{ toJSON(github.event) }}
       run: |
         echo $EVENT_CONTEXT
     - name: Publish to GPR
