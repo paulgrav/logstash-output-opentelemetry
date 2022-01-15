@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+env:
+  ARTIFACT_NAME: logstash-output-opentelemetry.gem
+
 jobs:
   build:
     uses: paulgrav/logstash-output-opentelemetry/.github/workflows/gradle.yml@main
