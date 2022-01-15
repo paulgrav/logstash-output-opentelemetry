@@ -10,17 +10,13 @@ name: Java CI with Gradle
 on:
   push:
     branches: [ main ]
-    tags:
-      - 'v*'
   pull_request:
     branches: [ main ]
 
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v2
     - name: Set up JDK 11
@@ -37,3 +33,6 @@ jobs:
         name: gem
         path: |
           *.gem
+
+
+
