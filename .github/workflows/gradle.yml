@@ -26,7 +26,14 @@ jobs:
       with:
         java-version: '11'
         distribution: 'temurin'
+    - name: Build with Make and set version
+      if: ${{ github.ref_type == "tag" }}
+      run: make gem VERSION=$VERSION
+      shell: bash
+      env:
+        VERSION: ${{ github.ref_name }}
     - name: Build with Make
+      if: ${{ github.ref_type != "tag" }}
       run: make gem
       shell: bash
     - name: Archive gem artifacts
