@@ -11,10 +11,10 @@ group                      'net.stomer' // must match the package of the main pl
 version                    "${file("VERSION").text.trim()}" // read from required VERSION file
 description                = "OpenTelemetry Output Plugin"
 pluginInfo.licenses        = ['Apache-2.0'] // list of SPDX license IDs
-pluginInfo.longDescription = "This gem is a Logstash plugin required to be installed on top of the Logstash core pipeline using \$LS_HOME/bin/logstash-plugin install gemname. This gem is not a stand-alone program"
+pluginInfo.longDescription = "A Logstash output plugin that allows logs to be output to OpenTelemetry otlp endpoints."
 pluginInfo.authors         = ['Paul Grave']
 pluginInfo.email           = ['paul@stomer.net']
-pluginInfo.homepage        = "http://paulgrav.micro.blog"
+pluginInfo.homepage        = "https://github.com/paulgrav/logstash-output-opentelemetry"
 pluginInfo.pluginType      = "output"
 pluginInfo.pluginClass     = "Opentelemetry"
 pluginInfo.pluginName      = "opentelemetry" // must match the @LogstashPlugin annotation in the main plugin class
