@@ -19,3 +19,4 @@ Gemfile*
 settings.gradle
 gradle.properties
 assets
+VERSION
