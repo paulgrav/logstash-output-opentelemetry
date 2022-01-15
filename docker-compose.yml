@@ -1,0 +1,11 @@
+version: "3.7"
+services:
+  webapp:
+    build: .
+    volumes:
+      - "./config/logstash.conf:/usr/share/logstash/pipeline/logstash.conf"
+
+  otel:
+    image: paulgrav/opentelemetry-collector-contrib:0.42.0
+    volumes:
+      - "./config/otel.yaml:/etc/otel/config.yaml"

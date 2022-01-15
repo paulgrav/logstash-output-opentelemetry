@@ -51,7 +51,12 @@ public class Opentelemetry implements Output {
         TraceFlags tf = TraceFlags.getDefault();
         SpanContext sp = null;
         try {
-            sp = SpanContext.create(event.sprintf("%{trace.id}"),event.sprintf("%{span.id}"),tf,ts);
+            sp = SpanContext.create(
+                    event.sprintf("%{trace.id}"),
+                    event.sprintf("%{span.id}"),
+                    tf,
+                    ts
+                );
         } catch (IOException e) {
             printer.println("IO Exception");
         }
