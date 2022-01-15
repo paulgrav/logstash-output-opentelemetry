@@ -50,7 +50,7 @@ dependencies {
     implementation 'io.opentelemetry:opentelemetry-exporter-logging:1.10.0'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp-logs:1.10.0-alpha'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp-http-logs:1.10.0-alpha'
-    implementation(fileTree(dir: LOGSTASH_CORE_PATH, include: "**/logstash-core-?.?.?.jar"))
+    implementation(fileTree(dir: LOGSTASH_CORE_PATH, include: "/build/libs/logstash-core-*.*.*.jar"))
     testImplementation 'junit:junit:4.12'
     testImplementation 'org.jruby:jruby-complete:9.1.13.0'
     testImplementation 'org.apache.logging.log4j:log4j-core:2.9.1'
