@@ -20,3 +20,5 @@ settings.gradle
 gradle.properties
 assets
 VERSION
+.DS_Store
+.nova

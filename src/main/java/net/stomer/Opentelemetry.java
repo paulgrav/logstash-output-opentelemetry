@@ -18,28 +18,22 @@ import io.opentelemetry.sdk.resources.Resource;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.Map;
+import java.net.URI;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 
 // class name must match plugin name
 @LogstashPlugin(name = "opentelemetry")
 public class Opentelemetry implements Output {
+    public static final PluginConfigSpec<Map<String, Object>> ENDPOINT_CONFIG =
+            PluginConfigSpec.hashSetting("endpoint", Collections.singletonMap("grpc","http://localhost:4317"), false, false);
+    private enum ENDPOINT_TYPE {grpc, http}
 
-    public static final PluginConfigSpec<String> ENDPOINT_CONFIG =
-            PluginConfigSpec.stringSetting("endpoint", "http://localhost:4317");
-    public static final PluginConfigSpec<String> EXPORTER_TYPE_CONFIG =
-            PluginConfigSpec.stringSetting("exporter_type", EXPORTER_TYPE.grpc.name() );
-    private enum EXPORTER_TYPE {grpc, http}
     private final String id;
-    private String endpoint;
-    private String exporterType;
-    private PrintStream printer;
+    private final PrintStream printer;
     private final CountDownLatch done = new CountDownLatch(1);
     private volatile boolean stopped = false;
-    private SdkLogEmitterProvider sdkLogEmitterProvider;
+    private final SdkLogEmitterProvider sdkLogEmitterProvider;
 
     // all plugins must provide a constructor that accepts id, Configuration, and Context
     public Opentelemetry(final String id, final Configuration configuration, final Context context) {
@@ -56,7 +50,7 @@ public class Opentelemetry implements Output {
                     event.sprintf("%{span.id}"),
                     tf,
                     ts
-                );
+            );
         } catch (IOException e) {
             printer.println("IO Exception");
         }
@@ -97,34 +91,34 @@ public class Opentelemetry implements Output {
                 .emit();
     }
 
-    private LogExporter logExporterForType(String type) {
-        if(type.equals(EXPORTER_TYPE.http.name())) {
+    private LogExporter logExporterForEndpointConfig(Map<String, Object> config) {
+        String endpoint;
+        if(config.containsKey(ENDPOINT_TYPE.http.name())) {
+            endpoint = (String) config.get(ENDPOINT_TYPE.http.name());
             return OtlpHttpLogExporter.builder()
                     .setEndpoint(endpoint)
                     .build();
         }
+        endpoint = (String) config.get(ENDPOINT_TYPE.grpc.name());
         return OtlpGrpcLogExporter.builder()
-                    .setEndpoint(endpoint)
-                    .build();
+                .setEndpoint(endpoint.toString())
+                .build();
     }
 
     Opentelemetry(final String id, final Configuration config, final Context context, OutputStream targetStream) {
         // constructors should validate configuration options
         this.id = id;
-        endpoint = config.get(ENDPOINT_CONFIG);
-        exporterType = config.get(EXPORTER_TYPE_CONFIG);
-
         printer = new PrintStream(targetStream);
         Attributes resourceAttributes;
         resourceAttributes = Attributes.builder()
                 .put("telemetry.sdk.name","logstash-output-opentelemetry")
                 .put("telemetry.sdk.language", "java")
                 .put("telemetry.sdk.version","0.0.1")
+                .put("agent.id", id)
                 .build();
         Resource r = Resource.create(resourceAttributes);
-        LogExporter exporter = logExporterForType(exporterType);
+        LogExporter exporter = logExporterForEndpointConfig(config.get(ENDPOINT_CONFIG));
 
-//      LogProcessor processor = SimpleLogProcessor.create(exporter);
         LogProcessor batchProcessor = BatchLogProcessor.builder(exporter).build();
         sdkLogEmitterProvider = SdkLogEmitterProvider.builder()
                 .setResource(r)
@@ -155,9 +149,7 @@ public class Opentelemetry implements Output {
 
     @Override
     public Collection<PluginConfigSpec<?>> configSchema() {
-        // should return a list of all configuration options for this plugin
-//        return Collections.singletonList(ENDPOINT_CONFIG);
-        return Arrays.asList(EXPORTER_TYPE_CONFIG,ENDPOINT_CONFIG);
+        return PluginHelper.commonOutputSettings(Arrays.asList(ENDPOINT_CONFIG));
     }
 
     @Override

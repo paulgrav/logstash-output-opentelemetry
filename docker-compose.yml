@@ -3,9 +3,8 @@ services:
   webapp:
     build: .
     volumes:
-      - "./config/logstash.conf:/usr/share/logstash/pipeline/logstash.conf"
-
+      - "./config/logstash/:/usr/share/logstash/pipeline/"
   otel:
     image: otel/opentelemetry-collector-contrib:0.42.0
     volumes:
-      - "./config/otel.yaml:/etc/otel/config.yaml"
+      - "./config/otel/otel.yaml:/etc/otel/config.yaml"

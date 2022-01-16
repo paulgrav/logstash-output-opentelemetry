@@ -1,5 +1,5 @@
 LOGSTASH_VERSION := 7.10.2
-VERSION := 0.0.1-alpha
+VERSION := 0.0.1
 ASSETSDIR := assets
 LOGSTASH_PATH := $(ASSETSDIR)/logstash-$(LOGSTASH_VERSION)
 LOGSTASH_CORE_PATH := $(LOGSTASH_PATH)/logstash-core
@@ -44,7 +44,7 @@ $(ASSETSDIR)/v$(LOGSTASH_VERSION).zip:
 clean:
 	@rm $(LOGSTASH_CORE_JAR)
 	@rm gradle.properties
-	@rm $(GEM_FILE)
+	@rm *.gem
 	@rm $(PLUGIN_JAR)
 	@rm VERSION
 

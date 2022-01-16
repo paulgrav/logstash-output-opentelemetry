@@ -43,7 +43,10 @@ output {
 
 ## Options
 
-Use `endpoint` to specify a GRPC otlp endpoint.
+Use `endpoint` to specify an otlp endpoint. The default is `http://localhost:4317`.
+Use `endpoint_type` to specify the type of endpoint, either `grpc` or `http`. The default is `grpc`.
+
+
 
 ## Building
 
@@ -52,3 +55,7 @@ Use `endpoint` to specify a GRPC otlp endpoint.
 ## Running locally
 
 `docker-compose up`
+
+## Notes
+
+**Warning** This plugin depends on OpenTelemetry logging libraries are that are alpha quality.
