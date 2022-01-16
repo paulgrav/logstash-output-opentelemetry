@@ -30,21 +30,37 @@ All other fields are attached as Attributes.
 
 ```
 input {
-    generator => {
+    generator {
         count => 10
+        add_field => {
+            "log.level" => "WARN"
+        }
     }
 }
 output {
-    opentelemetry => {
-        endpoint => "http://localhost:4317"
+    opentelemetry {
+        id => "otelgrpc"
+        endpoint => {
+            grpc => "http://otel:4317"
+        }
+    }
+    opentelemetry {
+        id => "otelhttp"
+        endpoint => {
+            http => "http://otel:4318/v1/logs"
+        }
     }
 }
+
 ```
 
 ## Options
 
-Use `endpoint` to specify an otlp endpoint. The default is `http://localhost:4317`.
-Use `endpoint_type` to specify the type of endpoint, either `grpc` or `http`. The default is `grpc`.
+Use `endpoint.grpc` or `endpoint.http` to specify an otlp endpoint. The default is:
+
+```
+endpoint => { grpc => "http://localhost:4317" }
+```
 
 
 
