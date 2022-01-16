@@ -25,10 +25,16 @@ import java.util.concurrent.CountDownLatch;
 // class name must match plugin name
 @LogstashPlugin(name = "opentelemetry")
 public class Opentelemetry implements Output {
-    public static final PluginConfigSpec<Map<String, Object>> ENDPOINT_CONFIG =
-            PluginConfigSpec.hashSetting("endpoint", Collections.singletonMap("grpc","http://localhost:4317"), false, false);
-    private enum ENDPOINT_TYPE {grpc, http}
 
+    public static final PluginConfigSpec<URI> ENDPOINT_CONFIG =
+            PluginConfigSpec.uriSetting("endpoint", null, false, true);
+    public static final PluginConfigSpec<String> ENDPOINT_TYPE_CONFIG =
+            PluginConfigSpec.stringSetting("endpoint_type", "", true, false);
+    public static final PluginConfigSpec<String> PROTOCOL_CONFIG =
+            PluginConfigSpec.stringSetting("protocol", "", false, false);
+    public static final PluginConfigSpec<String> COMPRESSION_CONFIG =
+            PluginConfigSpec.stringSetting("compression", "none");
+    private enum VALID_PROTOCOL_OPTIONS {grpc, http};
     private final String id;
     private final PrintStream printer;
     private final CountDownLatch done = new CountDownLatch(1);
@@ -50,7 +56,7 @@ public class Opentelemetry implements Output {
                     event.sprintf("%{span.id}"),
                     tf,
                     ts
-            );
+                );
         } catch (IOException e) {
             printer.println("IO Exception");
         }
@@ -91,23 +97,48 @@ public class Opentelemetry implements Output {
                 .emit();
     }
 
-    private LogExporter logExporterForEndpointConfig(Map<String, Object> config) {
-        String endpoint;
-        if(config.containsKey(ENDPOINT_TYPE.http.name())) {
-            endpoint = (String) config.get(ENDPOINT_TYPE.http.name());
+    private String protocolForConfig(Configuration configuration) {
+        String endpointType = configuration.get(ENDPOINT_TYPE_CONFIG);
+        String protocol = configuration.get(PROTOCOL_CONFIG);
+
+        if( !protocol.isEmpty() ) {
+            for (VALID_PROTOCOL_OPTIONS option : VALID_PROTOCOL_OPTIONS.values()) {
+                if(option.name().equals(protocol)) return protocol;
+            }
+            throw new IllegalArgumentException(String.format("protocol (%s) is not valid.", protocol));
+        }
+
+        if( endpointType.isEmpty() ) {
+            return VALID_PROTOCOL_OPTIONS.grpc.name();
+        }
+
+        for (VALID_PROTOCOL_OPTIONS option : VALID_PROTOCOL_OPTIONS.values()){
+            if(option.name().equals(endpointType)) return endpointType;
+        }
+
+        throw new IllegalArgumentException(String.format("endpoint_type (%s) is not valid", endpointType));
+    }
+
+    private LogExporter logExporterForConfig(Configuration configuration) {
+        URI endpoint = configuration.get(ENDPOINT_CONFIG);
+        String compression = configuration.get(COMPRESSION_CONFIG);
+
+        if(protocolForConfig(configuration).equals(VALID_PROTOCOL_OPTIONS.http.name())) {
             return OtlpHttpLogExporter.builder()
-                    .setEndpoint(endpoint)
+                    .setEndpoint(endpoint.toString())
+                    .setCompression(compression)
                     .build();
         }
-        endpoint = (String) config.get(ENDPOINT_TYPE.grpc.name());
         return OtlpGrpcLogExporter.builder()
                 .setEndpoint(endpoint.toString())
+                .setCompression(compression)
                 .build();
     }
 
     Opentelemetry(final String id, final Configuration config, final Context context, OutputStream targetStream) {
         // constructors should validate configuration options
         this.id = id;
+
         printer = new PrintStream(targetStream);
         Attributes resourceAttributes;
         resourceAttributes = Attributes.builder()
@@ -117,7 +148,7 @@ public class Opentelemetry implements Output {
                 .put("agent.id", id)
                 .build();
         Resource r = Resource.create(resourceAttributes);
-        LogExporter exporter = logExporterForEndpointConfig(config.get(ENDPOINT_CONFIG));
+        LogExporter exporter = logExporterForConfig(config);
 
         LogProcessor batchProcessor = BatchLogProcessor.builder(exporter).build();
         sdkLogEmitterProvider = SdkLogEmitterProvider.builder()
@@ -149,7 +180,7 @@ public class Opentelemetry implements Output {
 
     @Override
     public Collection<PluginConfigSpec<?>> configSchema() {
-        return PluginHelper.commonOutputSettings(Arrays.asList(ENDPOINT_CONFIG));
+        return PluginHelper.commonOutputSettings(Arrays.asList(ENDPOINT_TYPE_CONFIG,ENDPOINT_CONFIG,PROTOCOL_CONFIG,COMPRESSION_CONFIG));
     }
 
     @Override

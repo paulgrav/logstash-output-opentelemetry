@@ -10,7 +10,7 @@ The documentation for Logstash Java plugins is available [here](https://www.elas
 
 ## OpenTelemetry
 
-This plugin allows Logstash to output looks to an OpenTelemetry GRPC otlp endpoint. The default endpoint is http://localhost:4317
+This plugin allows Logstash to output looks to an OpenTelemetry otlp endpoint.
 
 Fields below are mapped as per the spec: https://opentelemetry.io/docs/reference/specification/logs/data-model/#elastic-common-schema
 
@@ -39,30 +39,41 @@ input {
 }
 output {
     opentelemetry {
-        id => "otelgrpc"
-        endpoint => {
-            grpc => "http://otel:4317"
-        }
-    }
-    opentelemetry {
-        id => "otelhttp"
-        endpoint => {
-            http => "http://otel:4318/v1/logs"
-        }
+        endpoint => "http://otel:4317"
+        protocol => "grpc"
+        compression => "none"
     }
 }
-
 ```
 
 ## Options
 
-Use `endpoint.grpc` or `endpoint.http` to specify an otlp endpoint. The default is:
+| Setting | Input Type | Required |
+|:--|:--|:--|
+| endpoint | [uri](https://www.elastic.co/guide/en/logstash/current/configuration-file-structure.html#uri) | Yes |
+| endpoint_type | [string](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#string) | No (Deprecated) |
+| protocol | [string](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#string), one of ["grpc", "http"] | No |
+| compression | [string](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#string), one of ["gzip", "none"] | No |
 
-```
-endpoint => { grpc => "http://localhost:4317" }
-```
+`endpoint`
 
+- This is a required setting.
+- There is no default value for this setting.
+- Value type is [uri](https://www.elastic.co/guide/en/logstash/current/configuration-file-structure.html#uri)
 
+`endpoint_type`
+
+- Deprecated. Replaced with `protocol`.
+
+`protocol`
+
+- Value type is [string](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#string)
+- Default is: `grpc`
+
+`compression`
+
+- Value type is [string](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#string)
+- Default is: `none`
 
 ## Building
 

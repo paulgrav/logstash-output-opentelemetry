@@ -5,6 +5,6 @@ services:
     volumes:
       - "./config/logstash/:/usr/share/logstash/pipeline/"
   otel:
-    image: otel/opentelemetry-collector-contrib:0.42.0
+    image: paulgrav/opentelemetry-collector-contrib:0.42.0
     volumes:
       - "./config/otel/otel.yaml:/etc/otel/config.yaml"
