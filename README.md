@@ -24,7 +24,16 @@ All other fields are attached as Attributes.
 
 ## Installation
 
+For some reason the following does NOT work.
+
 `logstash-plugin install logstash-output-opentelemetry`
+
+Instead, manually install the Gem:
+
+```
+curl -LO https://rubygems.org/downloads/logstash-output-opentelemetry-0.2.5.gem
+logstash-plugin install --no-verify --local *gem
+```
 
 ## Usage
 
