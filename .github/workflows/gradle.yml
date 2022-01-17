@@ -40,6 +40,7 @@ jobs:
       shell: bash
   test:
     name: test gem
+    needs: [build]
     runs-on: ubuntu-latest
     # container:
     #   image: logstash:7.10.1
@@ -53,7 +54,7 @@ jobs:
     - name: Run check end
       run: ls -lt
     - name: install
-      run: apt install logstash
+      run: apt update && apt install -y logstash
     - name: otel
       run: docker run otel/opentelemetry-collector
     - name: check otel
