@@ -15,7 +15,7 @@ on:
     branches: [ main ]
 
 env:
-  ARTIFACT_NAME: logstash-output-opentelemetry.gem
+  ARTIFACT_NAME: logstash-output-opentelemetry.zip
 
 jobs:
   build:
@@ -45,3 +45,6 @@ jobs:
         path: |
           *.gem
           VERSION
+
+
+
