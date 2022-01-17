@@ -46,8 +46,6 @@ jobs:
       image: logstash:7.10.1
       ports:
         - 80
-      volumes:
-        - "config/logstash/:/usr/share/logstash/pipeline/"
       options: --cpus 1
     steps:
     - uses: actions/checkout@v2
