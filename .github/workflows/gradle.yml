@@ -38,6 +38,20 @@ jobs:
       if: ${{ github.ref_type != 'tag' }}
       run: make gem
       shell: bash
+  test:
+    name: test gem
+    container:
+    image: logstash:7.10.1
+    ports:
+      - 80
+    volumes:
+      - "./config/logstash/:/usr/share/logstash/pipeline/"
+      - "./:/files"
+    options: --cpus 1
+    steps:
+    - name: Install logstash
+      run: logstash-plugin install --no-verify --local /files/*gem
+      shell: bash
     - name: Archive gem artifacts
       uses: actions/upload-artifact@v2
       with:
