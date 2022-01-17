@@ -42,21 +42,22 @@ jobs:
     name: test gem
     needs: [build]
     runs-on: ubuntu-latest
-    # container:
-    #   image: logstash:7.10.1
-    #   ports:
-    #     - 80
-    #   volumes:
-    #     - "./config/logstash/:/usr/share/logstash/pipeline/"
-    #     - "./:/files"
-    #   options: --cpus 1
+    container:
+      image: logstash:7.10.1
+      ports:
+        - 80
+      volumes:
+        - "config/logstash/:/usr/share/logstash/pipeline/"
+      options: --cpus 1
     steps:
+    - uses: actions/checkout@v2
+    - uses: actions/download-artifact@v2
+      with:
+        name: ${{ env.ARTIFACT_NAME }}
     - name: Run check end
       run: ls -lt
     - name: install
-      run: apt update && apt install -y logstash
-    - name: otel
-      run: docker run otel/opentelemetry-collector
+      run: docker run otel/opentelemetry-collector:0.42.0 -v config/otel/otel.yaml:/etc/otel/config.yaml -p 4317:4317
     - name: check otel
       run: docker ps
     - name: Install logstash
