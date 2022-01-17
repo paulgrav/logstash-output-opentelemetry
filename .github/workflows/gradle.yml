@@ -40,6 +40,7 @@ jobs:
       shell: bash
   test:
     name: test gem
+    runs-on: ubuntu-latest
     container:
       image: logstash:7.10.1
       ports:
