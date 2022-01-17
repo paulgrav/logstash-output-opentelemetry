@@ -10,7 +10,7 @@ name: Build Gem
 on:
   workflow_call:
   push:
-    branches: [ main ]
+    branches: [ '*' ]
   pull_request:
     branches: [ main ]
 
@@ -27,7 +27,7 @@ jobs:
       uses: actions/setup-java@v2
       with:
         java-version: '11'
-        distribution: 'adopt-hotspot'
+        distribution: 'temurin'
     - name: Build with Make and set version
       if: ${{ github.ref_type == 'tag' }}
       run: make gem VERSION=$VERSION
@@ -38,36 +38,3 @@ jobs:
       if: ${{ github.ref_type != 'tag' }}
       run: make gem
       shell: bash
-  test:
-    name: test gem
-    needs: [build]
-    runs-on: ubuntu-latest
-    container:
-      image: logstash:7.10.1
-      ports:
-        - 80
-      options: --cpus 1
-    steps:
-    - uses: actions/checkout@v2
-    - uses: actions/download-artifact@v2
-      with:
-        name: ${{ env.ARTIFACT_NAME }}
-    - name: Run check end
-      run: ls -lt
-    - name: install
-      run: docker run otel/opentelemetry-collector:0.42.0 -v config/otel/otel.yaml:/etc/otel/config.yaml -p 4317:4317
-    - name: check otel
-      run: docker ps
-    - name: Install logstash
-      run: logstash-plugin install --no-verify --local /files/*gem
-      shell: bash
-    - name: Archive gem artifacts
-      uses: actions/upload-artifact@v2
-      with:
-        name: ${{ env.ARTIFACT_NAME  }}
-        path: |
-          *.gem
-          VERSION
-
-
-
