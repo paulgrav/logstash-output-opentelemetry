@@ -27,7 +27,7 @@ jobs:
       uses: actions/setup-java@v2
       with:
         java-version: '11'
-        distribution: 'adopt-hotspot'
+        distribution: 'temurin'
     - name: Build with Make and set version
       if: ${{ github.ref_type == 'tag' }}
       run: make gem VERSION=$VERSION
