@@ -41,13 +41,13 @@ jobs:
   test:
     name: test gem
     container:
-    image: logstash:7.10.1
-    ports:
-      - 80
-    volumes:
-      - "./config/logstash/:/usr/share/logstash/pipeline/"
-      - "./:/files"
-    options: --cpus 1
+      image: logstash:7.10.1
+      ports:
+        - 80
+      volumes:
+        - "./config/logstash/:/usr/share/logstash/pipeline/"
+        - "./:/files"
+      options: --cpus 1
     steps:
     - name: Install logstash
       run: logstash-plugin install --no-verify --local /files/*gem
