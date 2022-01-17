@@ -41,15 +41,23 @@ jobs:
   test:
     name: test gem
     runs-on: ubuntu-latest
-    container:
-      image: logstash:7.10.1
-      ports:
-        - 80
-      volumes:
-        - "./config/logstash/:/usr/share/logstash/pipeline/"
-        - "./:/files"
-      options: --cpus 1
+    # container:
+    #   image: logstash:7.10.1
+    #   ports:
+    #     - 80
+    #   volumes:
+    #     - "./config/logstash/:/usr/share/logstash/pipeline/"
+    #     - "./:/files"
+    #   options: --cpus 1
     steps:
+    - name: Run check end
+      run: ls -lt
+    - name: install
+      run: apt install logstash
+    - name: otel
+      run: docker run otel/opentelemetry-collector
+    - name: check otel
+      run: docker ps
     - name: Install logstash
       run: logstash-plugin install --no-verify --local /files/*gem
       shell: bash
