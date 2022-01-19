@@ -1,22 +1,19 @@
-# Logstash Java Plugin
+# Logstash Output Plugin for OpenTelemetry
 
 [![Java CI with Gradle](https://github.com/paulgrav/logstash-output-opentelemetry/actions/workflows/gradle.yml/badge.svg)](https://github.com/paulgrav/logstash-output-opentelemetry/actions/workflows/gradle.yml)
 
-This is a Java plugin for [Logstash](https://github.com/elastic/logstash).
+This is a Java-based plugin for [Logstash](https://github.com/elastic/logstash).
 
 It is fully free and fully open source. The license is Apache 2.0, meaning you are free to use it however you want.
-
-The documentation for Logstash Java plugins is available [here](https://www.elastic.co/guide/en/logstash/6.7/contributing-java-plugin.html).
 
 ## OpenTelemetry
 
 This plugin allows Logstash to output looks to an OpenTelemetry otlp endpoint.
 
-Fields below are mapped as per the spec: https://opentelemetry.io/docs/reference/specification/logs/data-model/#elastic-common-schema
+Default field mapping is as per the spec: https://opentelemetry.io/docs/reference/specification/logs/data-model/#elastic-common-schema
 
 ```
 @timestamp >> Timestamp
-log.level >> SeverityText
 message >> Body
 ```
 
