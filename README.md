@@ -63,12 +63,21 @@ output {
 | endpoint_type | [string](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#string) | No (Deprecated) |
 | protocol | [string](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#string), one of ["grpc", "http"] | No |
 | compression | [string](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#string), one of ["gzip", "none"] | No |
+| resource | [Hash](https://www.elastic.co/guide/en/logstash/latest/configuration-file-structure.html#hash) | No |
+| body | [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference) | No |
+| name | [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference) | No |
+| severity_text | [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference) | No |
+| trace_id | [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference) | No |
+| span_id | [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference) | No |
+| trace_flags | [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference) | No |
 
 `endpoint`
 
 - This is a required setting.
 - There is no default value for this setting.
 - Value type is [uri](https://www.elastic.co/guide/en/logstash/current/configuration-file-structure.html#uri)
+
+An endpoint that supports otlp to which logs are sent.
 
 `endpoint_type`
 
@@ -79,10 +88,53 @@ output {
 - Value type is [string](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#string)
 - Default is: `grpc`
 
+Possible values are `grpc` or `http`
+
 `compression`
 
 - Value type is [string](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#string)
 - Default is: `none`
+
+Possible values are `gzip` or `none`
+
+`resource`
+
+- Value type is [hash](https://www.elastic.co/guide/en/logstash/latest/configuration-file-structure.html#hash)
+- Default is empty
+
+This hash allows additional fields to be added to the [OpenTelemetry Resource field](https://opentelemetry.io/docs/reference/specification/logs/data-model/#field-resource)
+Hash values must be strings.
+
+`body`
+
+- Value type is [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference)
+- Default is `message`
+
+The field to reference as the [Otel Body field](https://opentelemetry.io/docs/reference/specification/logs/data-model/#field-body).
+
+`severity_text`
+
+- Value type is [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference)
+
+The field to reference as the [Otel Severity Text field](https://opentelemetry.io/docs/reference/specification/logs/data-model/#field-severitytext).
+
+`trace_id`
+
+- Value type is [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference)
+
+The field to reference as the [Otel Trace ID field](https://opentelemetry.io/docs/reference/specification/logs/data-model/#field-traceid).
+
+`span_id`
+
+- Value type is [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference)
+
+The field to reference as the [Otel Span ID field](https://opentelemetry.io/docs/reference/specification/logs/data-model/#field-spanid).
+
+`trace_flags`
+
+- Value type is [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference)
+
+The field to reference as the [Otel Trace Flags field](https://opentelemetry.io/docs/reference/specification/logs/data-model/#field-traceflags).
 
 ## Building
 
