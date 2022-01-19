@@ -1,6 +1,7 @@
 package net.stomer;
 
 import co.elastic.logstash.api.*;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.api.trace.Span;
@@ -14,6 +15,7 @@ import io.opentelemetry.sdk.logs.SdkLogEmitterProvider;
 import io.opentelemetry.sdk.logs.export.BatchLogProcessor;
 import io.opentelemetry.sdk.logs.export.LogExporter;
 import io.opentelemetry.sdk.resources.Resource;
+import org.logstash.ConvertedList;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -63,13 +65,27 @@ public class Opentelemetry implements Output {
         return io.opentelemetry.context.Context.root().with(Span.wrap(sp));
     }
 
+    private List<String> decodeConvertedList(ConvertedList convertedList) {
+        String[] output = convertedList.unconvert().stream().toArray(String[]::new);
+        return Arrays.asList(output);
+    }
+
     private Attributes getAttributesForEvent(Event event) {
         Map<String, Object> eventData = event.getData();
         AttributesBuilder a = Attributes.builder();
-        for (String key : eventData.keySet()) {
-            if (key.equals("@timestamp") || key.equals("message")) continue;
 
-            a.put(key, (eventData.get(key)).toString());
+        for (Map.Entry<String, Object> e : eventData.entrySet()) {
+            String key = e.getKey();
+            if (key.equals("@timestamp")) continue;
+
+            Object value = e.getValue();
+            if (value instanceof ConvertedList) {
+                a.put(AttributeKey.stringArrayKey(key), decodeConvertedList((ConvertedList) value));
+            }
+
+            if (value instanceof String) {
+                a.put(AttributeKey.stringKey(key), (String) value);
+            }
         }
         return a.build();
     }
