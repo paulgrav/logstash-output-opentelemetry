@@ -116,7 +116,7 @@ The field to reference as the [Otel Body field](https://opentelemetry.io/docs/re
 
 - Value type is [Field Reference](https://www.elastic.co/guide/en/logstash/7.16/configuration-file-structure.html#field-reference)
 
-The field to reference as the [Otel Severity Text field](The field to reference as the [Otel Body field](https://opentelemetry.io/docs/reference/specification/logs/data-model/#field-severitytext).
+The field to reference as the [Otel Severity Text field](https://opentelemetry.io/docs/reference/specification/logs/data-model/#field-severitytext).
 
 `trace_id`
 
