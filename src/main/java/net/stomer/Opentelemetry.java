@@ -179,11 +179,12 @@ public class Opentelemetry implements Output {
     }
 
     Attributes getResourceAttributes() {
-
+        Package p = getClass().getPackage();
+        String version = p.getImplementationVersion();
         AttributesBuilder attributesBuilder = Attributes.builder()
                 .put("telemetry.sdk.name","logstash-output-opentelemetry")
                 .put("telemetry.sdk.language", "java")
-                .put("telemetry.sdk.version","0.0.1")
+                .put("telemetry.sdk.version",version)
                 .put("agent.id", id);
         Map<String, Object> resourceConfig = configuration.get(RESOURCE_CONFIG);
 

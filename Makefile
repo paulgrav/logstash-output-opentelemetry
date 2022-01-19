@@ -1,5 +1,5 @@
-LOGSTASH_VERSION := 7.10.1
-VERSION := 0.0.1
+LOGSTASH_VERSION := 7.10.2
+VERSION := 0.0.1.snapshot
 ASSETSDIR := assets
 LOGSTASH_PATH := $(ASSETSDIR)/logstash-$(LOGSTASH_VERSION)
 LOGSTASH_CORE_PATH := $(LOGSTASH_PATH)/logstash-core
@@ -15,7 +15,6 @@ $(GEM_FILE): VERSION gradle.properties logstashcorejar
 	./gradlew gem
 
 VERSION:
-	@echo $(VERSION)
 	@echo $(VERSION) > VERSION
 
 $(PLUGIN_JAR): logstashcorejar gradle.properties
@@ -42,12 +41,11 @@ $(ASSETSDIR)/v$(LOGSTASH_VERSION).zip:
 	curl -s -L  https://github.com/elastic/logstash/archive/refs/tags/v$(LOGSTASH_VERSION).zip -o $@
 
 clean:
-	@rm $(LOGSTASH_CORE_JAR)
+	@rm $(LOGSTASH_CORE_PATH)/build/libs/*.jar
 	@rm gradle.properties
 	@rm *.gem
-	@rm $(PLUGIN_JAR)
+	@rm build/libs/logstash-output-opentelemetry-*.jar
 	@rm VERSION
 
 clean-all: clean
-	@rm -rf $(ASSETSDIR)
-	@rm -rf build
+	@rm -rf $(ASSETSDIR) build vendor lib
