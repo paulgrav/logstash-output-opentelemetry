@@ -16,7 +16,6 @@ Fields below are mapped as per the spec: https://opentelemetry.io/docs/reference
 
 ```
 @timestamp >> Timestamp
-log.level >> SeverityText
 message >> Body
 ```
 
