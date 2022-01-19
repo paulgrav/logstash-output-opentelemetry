@@ -98,10 +98,8 @@ public class Opentelemetry implements Output {
             Object value = e.getValue();
             if (value instanceof ConvertedList) {
                 a.put(AttributeKey.stringArrayKey(key), decodeConvertedList((ConvertedList) value));
-            }
-
-            if (value instanceof String) {
-                a.put(AttributeKey.stringKey(key), (String) value);
+            } else {
+                a.put(AttributeKey.stringKey(key), (String) value.toString());
             }
         }
         return a.build();
