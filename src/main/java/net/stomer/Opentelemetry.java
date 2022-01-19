@@ -1,6 +1,7 @@
 package net.stomer;
 
 import co.elastic.logstash.api.*;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.api.trace.Span;
@@ -11,12 +12,10 @@ import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogExporter;
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogExporter;
 import io.opentelemetry.sdk.logs.LogProcessor;
 import io.opentelemetry.sdk.logs.SdkLogEmitterProvider;
-import io.opentelemetry.sdk.logs.data.Severity;
 import io.opentelemetry.sdk.logs.export.BatchLogProcessor;
 import io.opentelemetry.sdk.logs.export.LogExporter;
 import io.opentelemetry.sdk.resources.Resource;
-
-import java.io.IOException;
+import org.logstash.ConvertedList;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.URI;
@@ -45,9 +44,8 @@ public class Opentelemetry implements Output {
     public static final PluginConfigSpec<String> NAME_CONFIG = PluginConfigSpec.stringSetting("name", null, false, false);
     public static final PluginConfigSpec<String> BODY_CONFIG = PluginConfigSpec.stringSetting("body", "%{message}", false, false);
 
-    private enum VALID_PROTOCOL_OPTIONS {grpc, http};
+    private enum VALID_PROTOCOL_OPTIONS {grpc, http}
     private final String id;
-    private final PrintStream printer;
     private final Configuration configuration;
     private final CountDownLatch done = new CountDownLatch(1);
     private volatile boolean stopped = false;
@@ -59,21 +57,24 @@ public class Opentelemetry implements Output {
     }
 
     private String extractFieldForEvent(Event event, String field) {
-        if(field == null) return null;
-
-        String output = null;
-        try {
-            output = event.sprintf(field);
-            if(output.equals(field)) return null;
-        } catch (IOException e) {
-            printer.println("IO Exception");
+        if(field == null) return "";
+        String output = "";
+        Object o = event.getField(field);
+        if(o instanceof String) {
+            output = (String) event.getField(field);
+            if (output == null || output.equals(field)) return "";
         }
         return output;
     }
 
     private io.opentelemetry.context.Context getContextForEvent(Event event) {
         TraceState ts = TraceState.getDefault();
-        TraceFlags tf = TraceFlags.fromByte(Byte.parseByte(extractFieldForEvent(event, configuration.get(TRACE_FLAGS_CONFIG))));
+        TraceFlags tf = TraceFlags.getDefault();
+        String traceFlagsField = extractFieldForEvent(event, configuration.get(TRACE_FLAGS_CONFIG));
+        if(!traceFlagsField.isEmpty()) {
+            tf = TraceFlags.fromByte(Byte.parseByte(traceFlagsField));
+        }
+
         String traceId = extractFieldForEvent(event, configuration.get(TRACE_ID_CONFIG));
         String spanId = extractFieldForEvent(event, configuration.get(SPAN_ID_CONFIG));
 
@@ -81,13 +82,27 @@ public class Opentelemetry implements Output {
         return io.opentelemetry.context.Context.root().with(Span.wrap(sp));
     }
 
+    private List<String> decodeConvertedList(ConvertedList convertedList) {
+        String[] output = convertedList.unconvert().stream().toArray(String[]::new);
+        return Arrays.asList(output);
+    }
+
     private Attributes getDefaultAttributes(Event event) {
         Map<String, Object> eventData = event.getData();
         AttributesBuilder a = Attributes.builder();
-        for (String key : eventData.keySet()) {
+
+        for (Map.Entry<String, Object> e : eventData.entrySet()) {
+            String key = e.getKey();
             if (key.equals("@timestamp")) continue;
 
-            a.put(key, (eventData.get(key)).toString());
+            Object value = e.getValue();
+            if (value instanceof ConvertedList) {
+                a.put(AttributeKey.stringArrayKey(key), decodeConvertedList((ConvertedList) value));
+            }
+
+            if (value instanceof String) {
+                a.put(AttributeKey.stringKey(key), (String) value);
+            }
         }
         return a.build();
     }
@@ -185,7 +200,6 @@ public class Opentelemetry implements Output {
         this.id = id;
         this.configuration = config;
 
-        printer = new PrintStream(targetStream);
         Resource r = Resource.create(getResourceAttributes());
         LogExporter exporter = logExporterForConfig(config);
 
