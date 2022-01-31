@@ -21,3 +21,4 @@ assets
 VERSION
 .DS_Store
 .nova
+*.dylib
