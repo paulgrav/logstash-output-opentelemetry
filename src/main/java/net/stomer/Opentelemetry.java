@@ -4,16 +4,16 @@ import co.elastic.logstash.api.*;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
-import io.opentelemetry.api.logs.Logger;
-import io.opentelemetry.api.logs.LogRecordBuilder;
+import io.opentelemetry.api.logs.Severity;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.TraceFlags;
 import io.opentelemetry.api.trace.TraceState;
-import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter;
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter;
-import io.opentelemetry.sdk.logs.SdkLoggerProvider;
-import io.opentelemetry.sdk.logs.export.BatchLogRecordProcessor;
+import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter;
+import io.opentelemetry.sdk.common.CompletableResultCode;
+import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
+import io.opentelemetry.sdk.logs.data.LogRecordData;
 import io.opentelemetry.sdk.logs.export.LogRecordExporter;
 import io.opentelemetry.sdk.resources.Resource;
 import org.logstash.ConvertedList;
@@ -51,8 +51,9 @@ public class Opentelemetry implements Output {
     private final Configuration configuration;
     private final CountDownLatch done = new CountDownLatch(1);
     private volatile boolean stopped = false;
-    private final SdkLoggerProvider loggerProvider;
-    private final Logger otelLogger;
+    private final LogRecordExporter logRecordExporter;
+    private final Resource resource;
+    private final InstrumentationScopeInfo instrumentationScopeInfo;
 
     // all plugins must provide a constructor that accepts id, Configuration, and Context
     public Opentelemetry(final String id, final Configuration configuration, final Context context) {
@@ -70,7 +71,7 @@ public class Opentelemetry implements Output {
         return output;
     }
 
-    private io.opentelemetry.context.Context getContextForEvent(Event event) {
+    private SpanContext spanContextForEvent(Event event) {
         TraceState ts = TraceState.getDefault();
         TraceFlags tf = TraceFlags.getDefault();
         String traceFlagsField = extractFieldForEvent(event, configuration.get(TRACE_FLAGS_CONFIG));
@@ -81,8 +82,10 @@ public class Opentelemetry implements Output {
         String traceId = extractFieldForEvent(event, configuration.get(TRACE_ID_CONFIG));
         String spanId = extractFieldForEvent(event, configuration.get(SPAN_ID_CONFIG));
 
-        SpanContext sp = SpanContext.create(traceId, spanId, tf, ts);
-        return io.opentelemetry.context.Context.root().with(Span.wrap(sp));
+        if (traceId.isEmpty() || spanId.isEmpty()) {
+            return SpanContext.getInvalid();
+        }
+        return SpanContext.create(traceId, spanId, tf, ts);
     }
 
     private List<String> decodeConvertedList(ConvertedList convertedList) {
@@ -124,21 +127,21 @@ public class Opentelemetry implements Output {
         return getAttributesForConfigAndEvent(attributeConfig, event);
     }
 
-    private void emitLog(Event event) {
-        io.opentelemetry.context.Context c = getContextForEvent(event);
+    private LogRecordData buildLogRecordData(Event event) {
         String body = extractFieldForEvent(event, configuration.get(BODY_CONFIG));
         String severityText = extractFieldForEvent(event, configuration.get(SEVERITY_TEXT_CONFIG));
         Attributes attributes = getAttributesForEvent(event);
+        long timestampNanos = TimeUnit.MILLISECONDS.toNanos(event.getEventTimestamp().toEpochMilli());
 
-        LogRecordBuilder builder = otelLogger
-                .logRecordBuilder()
-                .setTimestamp(event.getEventTimestamp())
+        LogstashLogRecordData.Builder builder = LogstashLogRecordData.builder()
+                .setResource(resource)
+                .setInstrumentationScopeInfo(instrumentationScopeInfo)
+                .setTimestampEpochNanos(timestampNanos)
                 .setSeverityText(severityText)
                 .setBody(body)
-                .setAllAttributes(attributes)
-                .setContext(c);
-
-        builder.emit();
+                .setAttributes(attributes)
+                .setTotalAttributeCount(attributes.size());
+        return builder.build();
     }
 
     private String protocolForConfig(Configuration configuration) {
@@ -202,29 +205,55 @@ public class Opentelemetry implements Output {
         this.id = id;
         this.configuration = config;
 
-        Resource r = Resource.create(getResourceAttributes());
-        LogRecordExporter exporter = logExporterForConfig(config);
-
-        BatchLogRecordProcessor batchProcessor = BatchLogRecordProcessor.builder(exporter).build();
-        loggerProvider = SdkLoggerProvider.builder()
-                .setResource(r)
-                .addLogRecordProcessor(batchProcessor)
-                .build();
-        otelLogger = loggerProvider.loggerBuilder("logstash-output-opentelemetry").build();
+        this.resource = Resource.create(getResourceAttributes());
+        String version = this.resource.getAttribute(AttributeKey.stringKey("telemetry.sdk.version"));
+        this.instrumentationScopeInfo = InstrumentationScopeInfo.create("logstash-output-opentelemetry", version == null ? "" : version, null);
+        this.logRecordExporter = logExporterForConfig(config);
     }
 
     @Override
     public void output(final Collection<Event> events) {
-        Iterator<Event> z = events.iterator();
-        while (z.hasNext() && !stopped) {
-            emitLog(z.next());
+        List<LogRecordData> records = new ArrayList<>(events.size());
+        Iterator<Event> iterator = events.iterator();
+        while (iterator.hasNext()) {
+            records.add(buildLogRecordData(iterator.next()));
+        }
+
+        while (true) {
+            CompletableResultCode result = logRecordExporter.export(records);
+            // 30 是 batch processor 默认的 exporterTimeoutNanos
+            result.join(30, TimeUnit.SECONDS);
+            if (result.isSuccess()) {
+                break; // 成功就退出循环
+            }
+
+            if (!result.isDone()) {
+                System.err.println("[opentelemetry]Failed to export logs, timeout");
+                continue;
+            }
+
+            Throwable t = result.getFailureThrowable();
+            if (t != null) {
+                System.err.println("[opentelemetry]Failed to export logs, will retry... cause: " + t.getMessage());
+            } else {
+                System.err.println("[opentelemetry]Failed to export logs, shutdown");
+            }
+
+            try {
+                Thread.sleep(1000); // 简单固定间隔 1s
+            } catch (InterruptedException e) {
+                System.err.println("[opentelemetry]Failed to export logs, interrupt" + e.toString());
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
     }
 
     @Override
     public void stop() {
         stopped = true;
-        loggerProvider.shutdown();
+        CompletableResultCode shutdown = logRecordExporter.shutdown();
+        shutdown.join(5, TimeUnit.SECONDS);
         done.countDown();
     }
 
