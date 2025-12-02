@@ -4,16 +4,17 @@ import co.elastic.logstash.api.*;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
+import io.opentelemetry.api.logs.Logger;
+import io.opentelemetry.api.logs.LogRecordBuilder;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.TraceFlags;
 import io.opentelemetry.api.trace.TraceState;
-import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogExporter;
-import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogExporter;
-import io.opentelemetry.sdk.logs.LogProcessor;
-import io.opentelemetry.sdk.logs.SdkLogEmitterProvider;
-import io.opentelemetry.sdk.logs.export.BatchLogProcessor;
-import io.opentelemetry.sdk.logs.export.LogExporter;
+import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter;
+import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter;
+import io.opentelemetry.sdk.logs.SdkLoggerProvider;
+import io.opentelemetry.sdk.logs.export.BatchLogRecordProcessor;
+import io.opentelemetry.sdk.logs.export.LogRecordExporter;
 import io.opentelemetry.sdk.resources.Resource;
 import org.logstash.ConvertedList;
 import java.io.OutputStream;
@@ -21,6 +22,7 @@ import java.io.PrintStream;
 import java.net.URI;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 // class name must match plugin name
 @LogstashPlugin(name = "opentelemetry")
@@ -49,7 +51,8 @@ public class Opentelemetry implements Output {
     private final Configuration configuration;
     private final CountDownLatch done = new CountDownLatch(1);
     private volatile boolean stopped = false;
-    private final SdkLogEmitterProvider sdkLogEmitterProvider;
+    private final SdkLoggerProvider loggerProvider;
+    private final Logger otelLogger;
 
     // all plugins must provide a constructor that accepts id, Configuration, and Context
     public Opentelemetry(final String id, final Configuration configuration, final Context context) {
@@ -125,17 +128,17 @@ public class Opentelemetry implements Output {
         io.opentelemetry.context.Context c = getContextForEvent(event);
         String body = extractFieldForEvent(event, configuration.get(BODY_CONFIG));
         String severityText = extractFieldForEvent(event, configuration.get(SEVERITY_TEXT_CONFIG));
-        String name = extractFieldForEvent(event, configuration.get(NAME_CONFIG));
         Attributes attributes = getAttributesForEvent(event);
 
-        sdkLogEmitterProvider.get("logstash-output-opentelemetry").logBuilder()
-                .setEpoch(event.getEventTimestamp())
+        LogRecordBuilder builder = otelLogger
+                .logRecordBuilder()
+                .setTimestamp(event.getEventTimestamp())
                 .setSeverityText(severityText)
-                .setName(name)
                 .setBody(body)
-                .setAttributes(attributes)
-                .setContext(c)
-                .emit();
+                .setAllAttributes(attributes)
+                .setContext(c);
+
+        builder.emit();
     }
 
     private String protocolForConfig(Configuration configuration) {
@@ -160,17 +163,17 @@ public class Opentelemetry implements Output {
         throw new IllegalArgumentException(String.format("endpoint_type (%s) is not valid", endpointType));
     }
 
-    private LogExporter logExporterForConfig(Configuration configuration) {
+    private LogRecordExporter logExporterForConfig(Configuration configuration) {
         URI endpoint = configuration.get(ENDPOINT_CONFIG);
         String compression = configuration.get(COMPRESSION_CONFIG);
 
         if(protocolForConfig(configuration).equals(VALID_PROTOCOL_OPTIONS.http.name())) {
-            return OtlpHttpLogExporter.builder()
+            return OtlpHttpLogRecordExporter.builder()
                     .setEndpoint(endpoint.toString())
                     .setCompression(compression)
                     .build();
         }
-        return OtlpGrpcLogExporter.builder()
+        return OtlpGrpcLogRecordExporter.builder()
                 .setEndpoint(endpoint.toString())
                 .setCompression(compression)
                 .build();
@@ -200,13 +203,14 @@ public class Opentelemetry implements Output {
         this.configuration = config;
 
         Resource r = Resource.create(getResourceAttributes());
-        LogExporter exporter = logExporterForConfig(config);
+        LogRecordExporter exporter = logExporterForConfig(config);
 
-        LogProcessor batchProcessor = BatchLogProcessor.builder(exporter).build();
-        sdkLogEmitterProvider = SdkLogEmitterProvider.builder()
+        BatchLogRecordProcessor batchProcessor = BatchLogRecordProcessor.builder(exporter).build();
+        loggerProvider = SdkLoggerProvider.builder()
                 .setResource(r)
-                .addLogProcessor(batchProcessor)
+                .addLogRecordProcessor(batchProcessor)
                 .build();
+        otelLogger = loggerProvider.loggerBuilder("logstash-output-opentelemetry").build();
     }
 
     @Override
@@ -220,8 +224,7 @@ public class Opentelemetry implements Output {
     @Override
     public void stop() {
         stopped = true;
-        sdkLogEmitterProvider.forceFlush();
-        sdkLogEmitterProvider.shutdown();
+        loggerProvider.shutdown();
         done.countDown();
     }
 
