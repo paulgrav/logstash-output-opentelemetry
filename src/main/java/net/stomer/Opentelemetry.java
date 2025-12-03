@@ -4,23 +4,31 @@ import co.elastic.logstash.api.*;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
+import io.opentelemetry.api.logs.Severity;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.TraceFlags;
 import io.opentelemetry.api.trace.TraceState;
-import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogExporter;
-import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogExporter;
-import io.opentelemetry.sdk.logs.LogProcessor;
-import io.opentelemetry.sdk.logs.SdkLogEmitterProvider;
-import io.opentelemetry.sdk.logs.export.BatchLogProcessor;
-import io.opentelemetry.sdk.logs.export.LogExporter;
+import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter;
+import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporterBuilder;
+import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter;
+import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporterBuilder;
+import io.opentelemetry.exporter.prometheus.PrometheusHttpServer;
+import io.opentelemetry.sdk.common.CompletableResultCode;
+import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
+import io.opentelemetry.sdk.common.InternalTelemetryVersion;
+import io.opentelemetry.sdk.logs.data.LogRecordData;
+import io.opentelemetry.sdk.logs.export.LogRecordExporter;
+import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.resources.Resource;
 import org.logstash.ConvertedList;
+
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.URI;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 // class name must match plugin name
 @LogstashPlugin(name = "opentelemetry")
@@ -43,13 +51,21 @@ public class Opentelemetry implements Output {
     public static final PluginConfigSpec<String> TRACE_FLAGS_CONFIG = PluginConfigSpec.stringSetting("trace_flags", null, false, false);
     public static final PluginConfigSpec<String> NAME_CONFIG = PluginConfigSpec.stringSetting("name", null, false, false);
     public static final PluginConfigSpec<String> BODY_CONFIG = PluginConfigSpec.stringSetting("body", "message", false, false);
+    public static final PluginConfigSpec<Long> METRICS_PORT_CONFIG = PluginConfigSpec.numSetting("metrics_port", 8887L, false, false);
 
     private enum VALID_PROTOCOL_OPTIONS {grpc, http}
     private final String id;
     private final Configuration configuration;
     private final CountDownLatch done = new CountDownLatch(1);
     private volatile boolean stopped = false;
-    private final SdkLogEmitterProvider sdkLogEmitterProvider;
+    private final LogRecordExporter logRecordExporter;
+    private final Resource resource;
+    private final InstrumentationScopeInfo instrumentationScopeInfo;
+    private static final Object METRICS_LOCK = new Object();
+    private static PrometheusHttpServer sharedPrometheusServer;
+    private static SdkMeterProvider sharedMeterProvider;
+    private static int sharedMetricsPort = -1;
+    private final SdkMeterProvider meterProvider;
 
     // all plugins must provide a constructor that accepts id, Configuration, and Context
     public Opentelemetry(final String id, final Configuration configuration, final Context context) {
@@ -67,7 +83,7 @@ public class Opentelemetry implements Output {
         return output;
     }
 
-    private io.opentelemetry.context.Context getContextForEvent(Event event) {
+    private SpanContext spanContextForEvent(Event event) {
         TraceState ts = TraceState.getDefault();
         TraceFlags tf = TraceFlags.getDefault();
         String traceFlagsField = extractFieldForEvent(event, configuration.get(TRACE_FLAGS_CONFIG));
@@ -78,8 +94,10 @@ public class Opentelemetry implements Output {
         String traceId = extractFieldForEvent(event, configuration.get(TRACE_ID_CONFIG));
         String spanId = extractFieldForEvent(event, configuration.get(SPAN_ID_CONFIG));
 
-        SpanContext sp = SpanContext.create(traceId, spanId, tf, ts);
-        return io.opentelemetry.context.Context.root().with(Span.wrap(sp));
+        if (traceId.isEmpty() || spanId.isEmpty()) {
+            return SpanContext.getInvalid();
+        }
+        return SpanContext.create(traceId, spanId, tf, ts);
     }
 
     private List<String> decodeConvertedList(ConvertedList convertedList) {
@@ -121,21 +139,53 @@ public class Opentelemetry implements Output {
         return getAttributesForConfigAndEvent(attributeConfig, event);
     }
 
-    private void emitLog(Event event) {
-        io.opentelemetry.context.Context c = getContextForEvent(event);
+    private LogRecordData buildLogRecordData(Event event) {
         String body = extractFieldForEvent(event, configuration.get(BODY_CONFIG));
         String severityText = extractFieldForEvent(event, configuration.get(SEVERITY_TEXT_CONFIG));
-        String name = extractFieldForEvent(event, configuration.get(NAME_CONFIG));
         Attributes attributes = getAttributesForEvent(event);
+        long timestampNanos = TimeUnit.MILLISECONDS.toNanos(event.getEventTimestamp().toEpochMilli());
 
-        sdkLogEmitterProvider.get("logstash-output-opentelemetry").logBuilder()
-                .setEpoch(event.getEventTimestamp())
+        LogstashLogRecordData.Builder builder = LogstashLogRecordData.builder()
+                .setResource(resource)
+                .setInstrumentationScopeInfo(instrumentationScopeInfo)
+                .setTimestampEpochNanos(timestampNanos)
                 .setSeverityText(severityText)
-                .setName(name)
                 .setBody(body)
                 .setAttributes(attributes)
-                .setContext(c)
-                .emit();
+                .setTotalAttributeCount(attributes.size());
+        return builder.build();
+    }
+
+    private SdkMeterProvider initializeMetrics(Configuration configuration) {
+        Long portConfig = configuration.get(METRICS_PORT_CONFIG);
+        if (portConfig == null || portConfig <= 0) {
+            return null;
+        }
+
+        int port = Math.toIntExact(portConfig);
+        synchronized (METRICS_LOCK) {
+            if (sharedMeterProvider == null) {
+                try {
+                    sharedPrometheusServer = PrometheusHttpServer.builder()
+                            .setPort(port)
+                            .setHost("0.0.0.0")
+                            .build();
+
+                    sharedMeterProvider = SdkMeterProvider.builder()
+                            .setResource(resource)
+                            .registerMetricReader(sharedPrometheusServer)
+                            .build();
+                    sharedMetricsPort = port;
+                } catch (Exception e) {
+                    System.err.println("[opentelemetry]Failed to initialize Prometheus metrics endpoint: " + e.getMessage());
+                    sharedPrometheusServer = null;
+                    sharedMeterProvider = null;
+                }
+            } else if (sharedMetricsPort != port) {
+                System.err.println("[opentelemetry]Prometheus metrics port already bound to " + sharedMetricsPort + ", ignoring new value " + port);
+            }
+            return sharedMeterProvider;
+        }
     }
 
     private String protocolForConfig(Configuration configuration) {
@@ -160,20 +210,29 @@ public class Opentelemetry implements Output {
         throw new IllegalArgumentException(String.format("endpoint_type (%s) is not valid", endpointType));
     }
 
-    private LogExporter logExporterForConfig(Configuration configuration) {
+    private LogRecordExporter logExporterForConfig(Configuration configuration, SdkMeterProvider meterProvider) {
         URI endpoint = configuration.get(ENDPOINT_CONFIG);
         String compression = configuration.get(COMPRESSION_CONFIG);
 
-        if(protocolForConfig(configuration).equals(VALID_PROTOCOL_OPTIONS.http.name())) {
-            return OtlpHttpLogExporter.builder()
+        if (protocolForConfig(configuration).equals(VALID_PROTOCOL_OPTIONS.http.name())) {
+            OtlpHttpLogRecordExporterBuilder builder = OtlpHttpLogRecordExporter.builder()
                     .setEndpoint(endpoint.toString())
                     .setCompression(compression)
-                    .build();
+                    .setInternalTelemetryVersion(InternalTelemetryVersion.LATEST);
+            if (meterProvider != null) {
+                builder.setMeterProvider(meterProvider);
+            }
+            return builder.build();
         }
-        return OtlpGrpcLogExporter.builder()
+
+        OtlpGrpcLogRecordExporterBuilder builder = OtlpGrpcLogRecordExporter.builder()
                 .setEndpoint(endpoint.toString())
                 .setCompression(compression)
-                .build();
+                .setInternalTelemetryVersion(InternalTelemetryVersion.LATEST);
+        if (meterProvider != null) {
+            builder.setMeterProvider(meterProvider);
+        }
+        return builder.build();
     }
 
     Attributes getResourceAttributes() {
@@ -199,29 +258,56 @@ public class Opentelemetry implements Output {
         this.id = id;
         this.configuration = config;
 
-        Resource r = Resource.create(getResourceAttributes());
-        LogExporter exporter = logExporterForConfig(config);
-
-        LogProcessor batchProcessor = BatchLogProcessor.builder(exporter).build();
-        sdkLogEmitterProvider = SdkLogEmitterProvider.builder()
-                .setResource(r)
-                .addLogProcessor(batchProcessor)
-                .build();
+        this.resource = Resource.create(getResourceAttributes());
+        String version = this.resource.getAttribute(AttributeKey.stringKey("telemetry.sdk.version"));
+        this.instrumentationScopeInfo = InstrumentationScopeInfo.create("logstash-output-opentelemetry", version == null ? "" : version, null);
+        this.meterProvider = initializeMetrics(config);
+        this.logRecordExporter = logExporterForConfig(config, meterProvider);
     }
 
     @Override
     public void output(final Collection<Event> events) {
-        Iterator<Event> z = events.iterator();
-        while (z.hasNext() && !stopped) {
-            emitLog(z.next());
+        List<LogRecordData> records = new ArrayList<>(events.size());
+        Iterator<Event> iterator = events.iterator();
+        while (iterator.hasNext()) {
+            records.add(buildLogRecordData(iterator.next()));
+        }
+
+        while (true) {
+            CompletableResultCode result = logRecordExporter.export(records);
+            // 30 是 batch processor 默认的 exporterTimeoutNanos
+            result.join(30, TimeUnit.SECONDS);
+            if (result.isSuccess()) {
+                break; // 成功就退出循环
+            }
+
+            if (!result.isDone()) {
+                System.err.println("[opentelemetry]Failed to export logs, timeout");
+                continue;
+            }
+
+            Throwable t = result.getFailureThrowable();
+            if (t != null) {
+                System.err.println("[opentelemetry]Failed to export logs, will retry... cause: " + t.getMessage());
+            } else {
+                System.err.println("[opentelemetry]Failed to export logs, shutdown");
+            }
+
+            try {
+                Thread.sleep(1000); // 简单固定间隔 1s
+            } catch (InterruptedException e) {
+                System.err.println("[opentelemetry]Failed to export logs, interrupt" + e.toString());
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
     }
 
     @Override
     public void stop() {
         stopped = true;
-        sdkLogEmitterProvider.forceFlush();
-        sdkLogEmitterProvider.shutdown();
+        CompletableResultCode shutdown = logRecordExporter.shutdown();
+        shutdown.join(5, TimeUnit.SECONDS);
         done.countDown();
     }
 
@@ -244,7 +330,8 @@ public class Opentelemetry implements Output {
                 TRACE_FLAGS_CONFIG,
                 TRACE_ID_CONFIG,
                 SPAN_ID_CONFIG,
-                SEVERITY_TEXT_CONFIG
+                SEVERITY_TEXT_CONFIG,
+                METRICS_PORT_CONFIG
         ));
     }
 

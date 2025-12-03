@@ -1,6 +1,11 @@
 import java.nio.file.Files
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
+// Define variables required by rubyUtils.gradle
+ext {
+    snakeYamlVersion = '2.2'
+}
+
 apply plugin: 'java'
 apply from: LOGSTASH_CORE_PATH + "/../rubyUtils.gradle"
 
@@ -20,17 +25,18 @@ pluginInfo.pluginClass     = "Opentelemetry"
 pluginInfo.pluginName      = "opentelemetry" // must match the @LogstashPlugin annotation in the main plugin class
 // ===========================================================================
 
-sourceCompatibility = 1.8
-targetCompatibility = 1.8
+sourceCompatibility = 1.21
+targetCompatibility = 1.21
 
 buildscript {
     repositories {
         mavenCentral()
-        jcenter()
+        // logstash gradle 中使用到了 shadow 的地方也需要把 jcenter 替换成 gradlePluginPortal
+        gradlePluginPortal()
     }
 
     dependencies {
-        classpath 'com.github.jengelman.gradle.plugins:shadow:4.0.4'
+        classpath 'com.github.johnrengelman.shadow:com.github.johnrengelman.shadow.gradle.plugin:8.1.1'
     }
 }
 
@@ -51,12 +57,16 @@ shadowJar {
 }
 
 dependencies {
+    // OpenTelemetry BOM to manage all OpenTelemetry dependency versions
+    implementation platform('io.opentelemetry:opentelemetry-bom:1.56.0')
+
     implementation 'org.apache.logging.log4j:log4j-api:2.9.1'
-    implementation 'io.opentelemetry:opentelemetry-sdk-logs:1.10.0-alpha'
-    implementation 'io.opentelemetry:opentelemetry-exporter-logging:1.10.0'
-    implementation 'io.opentelemetry:opentelemetry-exporter-otlp-logs:1.10.0-alpha'
-    implementation 'io.opentelemetry:opentelemetry-exporter-otlp-http-logs:1.10.0-alpha'
-    implementation(fileTree(dir: LOGSTASH_CORE_PATH, include: "/build/libs/logstash-core-*.*.*.jar"))
+    implementation 'io.opentelemetry:opentelemetry-sdk-logs'
+    implementation 'io.opentelemetry:opentelemetry-sdk-metrics'
+    implementation 'io.opentelemetry:opentelemetry-exporter-prometheus:1.56.0-alpha'
+    implementation 'io.opentelemetry:opentelemetry-exporter-logging'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+    implementation fileTree(dir: "${LOGSTASH_CORE_PATH}/build/libs", include: ["logstash-core*.jar"])
     testImplementation 'junit:junit:4.12'
     testImplementation 'org.jruby:jruby-complete:9.1.13.0'
     testImplementation 'org.apache.logging.log4j:log4j-core:2.9.1'
