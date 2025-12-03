@@ -59,9 +59,11 @@ shadowJar {
 dependencies {
     // OpenTelemetry BOM to manage all OpenTelemetry dependency versions
     implementation platform('io.opentelemetry:opentelemetry-bom:1.56.0')
-    
+
     implementation 'org.apache.logging.log4j:log4j-api:2.9.1'
     implementation 'io.opentelemetry:opentelemetry-sdk-logs'
+    implementation 'io.opentelemetry:opentelemetry-sdk-metrics'
+    implementation 'io.opentelemetry:opentelemetry-exporter-prometheus:1.56.0-alpha'
     implementation 'io.opentelemetry:opentelemetry-exporter-logging'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
     implementation fileTree(dir: "${LOGSTASH_CORE_PATH}/build/libs", include: ["logstash-core*.jar"])

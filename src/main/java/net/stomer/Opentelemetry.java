@@ -10,13 +10,19 @@ import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.TraceFlags;
 import io.opentelemetry.api.trace.TraceState;
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter;
+import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporterBuilder;
 import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter;
+import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporterBuilder;
+import io.opentelemetry.exporter.prometheus.PrometheusHttpServer;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo;
+import io.opentelemetry.sdk.common.InternalTelemetryVersion;
 import io.opentelemetry.sdk.logs.data.LogRecordData;
 import io.opentelemetry.sdk.logs.export.LogRecordExporter;
+import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.resources.Resource;
 import org.logstash.ConvertedList;
+
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.URI;
@@ -45,6 +51,7 @@ public class Opentelemetry implements Output {
     public static final PluginConfigSpec<String> TRACE_FLAGS_CONFIG = PluginConfigSpec.stringSetting("trace_flags", null, false, false);
     public static final PluginConfigSpec<String> NAME_CONFIG = PluginConfigSpec.stringSetting("name", null, false, false);
     public static final PluginConfigSpec<String> BODY_CONFIG = PluginConfigSpec.stringSetting("body", "message", false, false);
+    public static final PluginConfigSpec<Long> METRICS_PORT_CONFIG = PluginConfigSpec.numSetting("metrics_port", 8887L, false, false);
 
     private enum VALID_PROTOCOL_OPTIONS {grpc, http}
     private final String id;
@@ -54,6 +61,11 @@ public class Opentelemetry implements Output {
     private final LogRecordExporter logRecordExporter;
     private final Resource resource;
     private final InstrumentationScopeInfo instrumentationScopeInfo;
+    private static final Object METRICS_LOCK = new Object();
+    private static PrometheusHttpServer sharedPrometheusServer;
+    private static SdkMeterProvider sharedMeterProvider;
+    private static int sharedMetricsPort = -1;
+    private final SdkMeterProvider meterProvider;
 
     // all plugins must provide a constructor that accepts id, Configuration, and Context
     public Opentelemetry(final String id, final Configuration configuration, final Context context) {
@@ -144,6 +156,38 @@ public class Opentelemetry implements Output {
         return builder.build();
     }
 
+    private SdkMeterProvider initializeMetrics(Configuration configuration) {
+        Long portConfig = configuration.get(METRICS_PORT_CONFIG);
+        if (portConfig == null || portConfig <= 0) {
+            return null;
+        }
+
+        int port = Math.toIntExact(portConfig);
+        synchronized (METRICS_LOCK) {
+            if (sharedMeterProvider == null) {
+                try {
+                    sharedPrometheusServer = PrometheusHttpServer.builder()
+                            .setPort(port)
+                            .setHost("0.0.0.0")
+                            .build();
+
+                    sharedMeterProvider = SdkMeterProvider.builder()
+                            .setResource(resource)
+                            .registerMetricReader(sharedPrometheusServer)
+                            .build();
+                    sharedMetricsPort = port;
+                } catch (Exception e) {
+                    System.err.println("[opentelemetry]Failed to initialize Prometheus metrics endpoint: " + e.getMessage());
+                    sharedPrometheusServer = null;
+                    sharedMeterProvider = null;
+                }
+            } else if (sharedMetricsPort != port) {
+                System.err.println("[opentelemetry]Prometheus metrics port already bound to " + sharedMetricsPort + ", ignoring new value " + port);
+            }
+            return sharedMeterProvider;
+        }
+    }
+
     private String protocolForConfig(Configuration configuration) {
         String endpointType = configuration.get(ENDPOINT_TYPE_CONFIG);
         String protocol = configuration.get(PROTOCOL_CONFIG);
@@ -166,20 +210,29 @@ public class Opentelemetry implements Output {
         throw new IllegalArgumentException(String.format("endpoint_type (%s) is not valid", endpointType));
     }
 
-    private LogRecordExporter logExporterForConfig(Configuration configuration) {
+    private LogRecordExporter logExporterForConfig(Configuration configuration, SdkMeterProvider meterProvider) {
         URI endpoint = configuration.get(ENDPOINT_CONFIG);
         String compression = configuration.get(COMPRESSION_CONFIG);
 
-        if(protocolForConfig(configuration).equals(VALID_PROTOCOL_OPTIONS.http.name())) {
-            return OtlpHttpLogRecordExporter.builder()
+        if (protocolForConfig(configuration).equals(VALID_PROTOCOL_OPTIONS.http.name())) {
+            OtlpHttpLogRecordExporterBuilder builder = OtlpHttpLogRecordExporter.builder()
                     .setEndpoint(endpoint.toString())
                     .setCompression(compression)
-                    .build();
+                    .setInternalTelemetryVersion(InternalTelemetryVersion.LATEST);
+            if (meterProvider != null) {
+                builder.setMeterProvider(meterProvider);
+            }
+            return builder.build();
         }
-        return OtlpGrpcLogRecordExporter.builder()
+
+        OtlpGrpcLogRecordExporterBuilder builder = OtlpGrpcLogRecordExporter.builder()
                 .setEndpoint(endpoint.toString())
                 .setCompression(compression)
-                .build();
+                .setInternalTelemetryVersion(InternalTelemetryVersion.LATEST);
+        if (meterProvider != null) {
+            builder.setMeterProvider(meterProvider);
+        }
+        return builder.build();
     }
 
     Attributes getResourceAttributes() {
@@ -208,7 +261,8 @@ public class Opentelemetry implements Output {
         this.resource = Resource.create(getResourceAttributes());
         String version = this.resource.getAttribute(AttributeKey.stringKey("telemetry.sdk.version"));
         this.instrumentationScopeInfo = InstrumentationScopeInfo.create("logstash-output-opentelemetry", version == null ? "" : version, null);
-        this.logRecordExporter = logExporterForConfig(config);
+        this.meterProvider = initializeMetrics(config);
+        this.logRecordExporter = logExporterForConfig(config, meterProvider);
     }
 
     @Override
@@ -276,7 +330,8 @@ public class Opentelemetry implements Output {
                 TRACE_FLAGS_CONFIG,
                 TRACE_ID_CONFIG,
                 SPAN_ID_CONFIG,
-                SEVERITY_TEXT_CONFIG
+                SEVERITY_TEXT_CONFIG,
+                METRICS_PORT_CONFIG
         ));
     }
 
